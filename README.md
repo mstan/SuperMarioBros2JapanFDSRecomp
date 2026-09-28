@@ -9,7 +9,16 @@ exactly as on hardware. Every program file on the disk is compiled ahead of time
 at its load address. Anything the game builds in RAM at run time falls back to an
 interpreter built from the same code templates.
 
+This is the **first public release of a Famicom Disk System title built with
+nesrecomp**: the first FDS game on its cycle-accurate backend, running the real
+BIOS and recompiling code loaded from disk.
+
 **No game data is included.** You supply your own disk image and FDS BIOS.
+
+| | |
+|---|---|
+| ![FDS BIOS](docs/screenshots/bios.png) | ![Title](docs/screenshots/title.png) |
+| ![World 1-1](docs/screenshots/play1.png) | ![World 1-1](docs/screenshots/play2.png) |
 
 ## Requirements
 
