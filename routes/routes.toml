@@ -1,0 +1,20 @@
+# Scripted routes: build inputs for cyc_captures.txt and the coverage check.
+# python routes/run_routes.py build/headless/SuperMarioBros2JapanFDSRecomp.exe [--capture-log cyc_captures.txt]
+
+[[route]]
+name = "boot"        # BIOS disk load to the title (nesref gate route, title at 751)
+frames = 800
+
+[[route]]
+name = "attract"     # title and attract demo cycles, no input
+frames = 6000
+
+[[route]]
+name = "play"        # Mario 1-1: three lives, game over, CONTINUE, play again
+frames = 9000
+input = "play.txt"
+
+[[route]]
+name = "luigi"       # LUIGI GAME 1-1 to game over
+frames = 5000
+input = "luigi.txt"

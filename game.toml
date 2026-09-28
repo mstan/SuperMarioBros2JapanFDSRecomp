@@ -1,0 +1,20 @@
+# game.toml - Super Mario Bros. 2 (Japan) (Famicom Disk System)
+#
+# Disk image: Super Mario Bros. 2 (Japan) (Debug Value 0).fds
+#   fwNES-headered, 1 side(s), 65516 bytes, SHA1 3b8c8998b4887d6dd676965943d69a320738ab9c
+#
+# FDS titles run on the cycle backend only (runner/cyc). The BIOS executes
+# LLE (recompiled disksys.rom driving the modelled RAM Adapter and drive);
+# every PRG file of every side is compiled at its load address as RAM views,
+# entered only while RAM holds their bytes; anything else runs on the cycle
+# interpreter. Audio: [game] console left at its default (famicom for the FDS).
+
+[game]
+name           = "Super Mario Bros. 2 (Japan)"
+output_prefix  = "super-mario-bros-2-japan-fds"
+cycle_accurate = true
+fds            = true
+
+[fds]
+image = "Super Mario Bros. 2 (Japan) (Debug Value 0).fds"
+bios  = "bios/disksys.rom"

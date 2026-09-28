@@ -1,0 +1,33 @@
+# --- Build output ---
+build/
+build-cycle/
+build_debug/
+build_release/
+release/
+generated/
+
+# --- Copyrighted data (NEVER commit) ---
+# The disk image, the FDS BIOS, disk-write sidecars and archives are
+# copyrighted material supplied locally by the user.
+*.fds
+*.FDS
+*.qd
+*.zip
+*.nes
+bios/*.rom
+bios/*.ROM
+saves/
+*.sav
+*.srm
+
+# --- Ghidra workspace (embeds image bytes) ---
+ghidra/
+
+# --- Logs and transient runtime artifacts ---
+*.log
+.mcp.json
+cyc_seeds*.txt
+cyc_captures*.txt
+config.ini
+rom.cfg
+smoke*.json
