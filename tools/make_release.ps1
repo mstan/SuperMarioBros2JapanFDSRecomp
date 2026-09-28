@@ -8,15 +8,23 @@ The zip never contains a disk image, the BIOS, a capture file or saves. Building
 needs your own disk image and bios\disksys.rom (see README.md): the BIOS is
 recompiled into the program. The player supplies both files again at run time.
 
+Static coverage: code the game copies into RAM at run time is compiled from a
+local capture file (cyc_captures.txt, gitignored: it holds game code bytes).
+-Ingest regenerates it from your own image first: a headless build runs every
+route in routes\routes.toml with --capture-log, then the release build compiles
+what they ran. Without a capture file that code runs on the interpreter.
+
 Publish after smoke-testing the zip from a scratch directory:
   gh release create vX.Y.Z release\SuperMarioBros2JapanFDSRecomp-windows-x64.zip --title "vX.Y.Z" --notes-file <notes.md>
 
-Usage: powershell -File tools\make_release.ps1 [-SkipBuild] [-BuildDir build_release]
+Usage: powershell -File tools\make_release.ps1 [-Ingest] [-Captures FILE] [-SkipBuild] [-BuildDir build_release]
 #>
 param(
   [string]$BuildDir = 'build_release',
   [switch]$SkipBuild,
-  [string]$CMake = ''
+  [string]$CMake = '',
+  [string]$Captures = '',
+  [switch]$Ingest
 )
 $ErrorActionPreference = 'Stop'
 $name = 'SuperMarioBros2JapanFDSRecomp'
@@ -34,8 +42,26 @@ if (-not $CMake) {
   if (-not $CMake) { $CMake = 'cmake' }
 }
 
+if (-not $Captures) { $Captures = Join-Path $root 'cyc_captures.txt' }
+$Captures = [IO.Path]::GetFullPath($Captures)
+if ($Ingest) {
+  # Capture pass: a headless build (with whatever captures exist) runs every route.
+  $ingestBuild = Join-Path $root 'build_ingest'
+  $pre = if (Test-Path $Captures) { "-DNESRECOMP_CYCLE_CAPTURES=$Captures" } else { '-DNESRECOMP_CYCLE_CAPTURES=' }
+  & $CMake -S $root -B $ingestBuild -G 'Visual Studio 17 2022' -A x64 -DNESRECOMP_HEADLESS=ON $pre
+  if ($LASTEXITCODE -ne 0) { throw "ingest configure failed ($LASTEXITCODE)" }
+  & $CMake --build $ingestBuild --config Release --parallel
+  if ($LASTEXITCODE -ne 0) { throw "ingest build failed ($LASTEXITCODE)" }
+  $headless = Get-ChildItem -LiteralPath $ingestBuild -Recurse -Filter "$name.exe" | Where-Object { $_.FullName -notmatch '\\CMakeFiles\\' } | Select-Object -First 1
+  python (Join-Path $root 'routes\run_routes.py') $headless.FullName --capture-log $Captures
+  if ($LASTEXITCODE -ne 0) { throw "routes failed ($LASTEXITCODE)" }
+}
+$capArg = '-DNESRECOMP_CYCLE_CAPTURES='
+if (Test-Path $Captures) { $capArg = "-DNESRECOMP_CYCLE_CAPTURES=$Captures"; Write-Host "static coverage: compiling captures from $Captures" }
+else { Write-Warning "no capture file ($Captures): RAM code the game copies at run time will be interpreted; use -Ingest" }
+
 if (-not $SkipBuild) {
-  & $CMake -S $root -B $build -G 'Visual Studio 17 2022' -A x64 -DNESRECOMP_DEV_UI=OFF -DNESRECOMP_HEADLESS=OFF
+  & $CMake -S $root -B $build -G 'Visual Studio 17 2022' -A x64 -DNESRECOMP_DEV_UI=OFF -DNESRECOMP_HEADLESS=OFF $capArg
   if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
   & $CMake --build $build --config Release --parallel
   if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
