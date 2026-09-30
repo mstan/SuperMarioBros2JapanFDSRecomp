@@ -2,7 +2,7 @@
 make_release.ps1 -- build and zip the Windows release.
 
   release\SuperMarioBros2JapanFDSRecomp-windows-x64.zip
-    SuperMarioBros2JapanFDSRecomp.exe, SDL2.dll, assets\, README.txt, LICENSE.txt
+    SuperMarioBros2JapanFDSRecomp.exe, SDL2.dll, assets\, mods\packages\, README.txt, LICENSE.txt
 
 The zip never contains a disk image, the BIOS, a capture file or saves. Building
 needs your own disk image and bios\disksys.rom (see README.md): the BIOS is
@@ -74,7 +74,7 @@ $exe = Get-ChildItem -LiteralPath $build -Recurse -Filter "$name.exe" | Where-Ob
        Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $exe) { throw "no $name.exe under $build" }
 $bin = $exe.DirectoryName
-foreach ($need in @('SDL2.dll', 'assets')) {
+foreach ($need in @('SDL2.dll', 'assets', 'mods\packages')) {
   if (-not (Test-Path (Join-Path $bin $need))) { throw "missing $need beside $($exe.FullName)" }
 }
 
@@ -83,6 +83,9 @@ if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $exe.FullName, (Join-Path $bin 'SDL2.dll') $stage
 Copy-Item -Recurse (Join-Path $bin 'assets') $stage
+# Mod packages only; mods\state.toml is the player's selection, never shipped.
+New-Item -ItemType Directory -Force (Join-Path $stage 'mods') | Out-Null
+Copy-Item -Recurse (Join-Path $bin 'mods\packages') (Join-Path $stage 'mods')
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE.txt')
 @'
 Super Mario Bros. 2 (Japan) - FDS Static Recompilation
@@ -106,12 +109,15 @@ D = Disk, Escape = Menu, Tab = fast-forward. Controller: A/X = A/B, LB = Disk, R
 Disk: press once to see the drive state; press again while it shows to swap sides.
 Rebind everything on the launcher's Controls page.
 
+Widescreen (experimental, off by default): enable it on the launcher's Mods
+screen or in the in-game menu's Mods section. Fit window, 16:9, 21:9 or 32:9.
+
 License: PolyForm Noncommercial 1.0.0 (LICENSE.txt). Super Mario Bros. 2 and the
 Famicom Disk System are trademarks of Nintendo; not affiliated with Nintendo.
 '@ | Set-Content -Encoding utf8 (Join-Path $stage 'README.txt')
 
 $banned = Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object {
-  $_.Extension -in '.fds', '.qd', '.rom', '.nes', '.ips', '.fdssave', '.sav' -or $_.Name -match 'capture|config\.ini|rom\.cfg'
+  $_.Extension -in '.fds', '.qd', '.rom', '.nes', '.ips', '.fdssave', '.sav' -or $_.Name -match 'capture|config\.ini|rom\.cfg|^state\.toml$'
 }
 if ($banned) { throw "refusing to package: $($banned.FullName -join ', ')" }
 
