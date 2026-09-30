@@ -43,6 +43,7 @@ BIOS and recompiling code loaded from disk.
 | Disk | D | LB |
 | Menu | Escape | RB |
 | Fast-forward | Tab (hold) | RT |
+| Save / load state | F8 / F9 | - |
 
 All bindings can be changed on the launcher's Controls page.
 
@@ -50,6 +51,14 @@ All bindings can be changed on the launcher's Controls page.
 notice is showing to swap to the next side. SMB2J has one side, so it just
 re-inserts. Disk saves go to `saves/` beside the executable; the image itself is
 never written.
+
+## Widescreen (experimental)
+
+An opt-in mod: enable **Widescreen (Experimental)** on the launcher's Mods
+screen or in the in-game menu's Mods section (Fit window, 16:9, 21:9 or 32:9,
+status bar at the edges or centered, original or wide-view enemy activation).
+Off by default; with it off the game is unchanged. See
+[docs/WIDESCREEN.md](docs/WIDESCREEN.md).
 
 ## Building from source
 
