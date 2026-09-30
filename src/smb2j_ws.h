@@ -87,6 +87,7 @@ enum {
     RAM_AreaType             = 0x074E,
     RAM_AreaNumber           = 0x0760,
     RAM_LevelNumber          = 0x075C,
+    RAM_HalfwayPage          = 0x075B,   /* InitializeArea starts the area at this page */
     RAM_WorldNumber          = 0x075F,
     RAM_PrimaryHardMode      = 0x076A,
     RAM_OperMode             = 0x0770,
@@ -97,6 +98,8 @@ enum {
     RAM_EnemyIntervalTimer   = 0x0796,
     RAM_FileListNumber       = 0x07F7,   /* SMB2J: the disk state (which overlay is loaded) */
     RAM_HardWorldFlag        = 0x07FB,   /* SMB2J: worlds A-D (WorldNumber 0-3 again) */
+    RAM_WindFlag             = 0x07F9,
+    RAM_CompletedWorlds      = 0x07FA,   /* SMB2J: a bit per world finished; $FF after 8-4 leads to world 9 */   /* SMB2J: WindOn/WindOff area objects (worlds 5-8, A-D) */
 };
 
 enum {

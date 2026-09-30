@@ -100,10 +100,42 @@ static int render_camera(void) {
     return cam + ((ppu - cam + 256) & 511) - 256;
 }
 
+/* ---- wind ----
+ * SimulateWind (SM2DATA2/SM2DATA4) draws twelve leaves as screen-space
+ * sprites, tile $7A/$7B, attributes $41, their X advancing modulo 256: a
+ * field that repeats every 256 pixels. No other sprite of the game uses those
+ * tiles (the sprite graphics tables and routines of SM2MAIN, SM2DATA2-4), so
+ * the OAM the picture was drawn with identifies them. The margins show the
+ * same field one and two screens over, drawn from that OAM. */
+static int s_leaf_offset;
+static int s_leaves_drawn;
+
+static int leaf_sprite(const uint8_t *o) { return (o[1] == 0x7A || o[1] == 0x7B) && o[2] == 0x41; }
+
+static int place_leaf(int slot, int x, int y, int *out_x, void *user) {
+    (void)y;
+    if (!leaf_sprite(cyc_render_oam() + slot * 4)) return 0;
+    *out_x = *(const int *)user + x + s_leaf_offset;
+    s_leaves_drawn++;
+    return 1;
+}
+
+static void draw_wind_leaves(uint32_t *out, int width, int height, int play_x0) {
+    s_leaves_drawn = 0;
+    if (!RAM(RAM_FileListNumber)) return; /* worlds 1-4 have no wind */
+    for (int k = -3; k <= 3; ++k) {
+        if (!k || play_x0 + 256 * k >= width || play_x0 + 256 * (k + 1) <= 0) continue;
+        s_leaf_offset = 256 * k;
+        cyc_render_sprites(out, width, height, play_x0, NULL, place_leaf, &play_x0);
+    }
+}
+
 /* ---- the compositor ---- */
 
 static int render(uint32_t *out, int width, int height, int native_x0, const uint32_t *native, void *user) {
     (void)user;
+    smb_ws_actors_compose_begin();
+    s_leaves_drawn = 0;
     if (!s_enabled || !smb2j_ws_world_scene() || !g_smb_ws_world.valid ||
         !(cyc_render_line_mask(PLAYFIELD_LINE) & 0x08)) {
         s_native_frames++;
@@ -153,6 +185,7 @@ static int render(uint32_t *out, int width, int height, int native_x0, const uin
         s_opaque[y * width + x + play_x0] = bg[y * 256 + x];
     }
     smb_ws_actors_draw(out, width, height, play_x0, cam, s_opaque);
+    draw_wind_leaves(out, width, height, play_x0);
     for (int y = 0; y < SMB2J_HUD_ROWS; y++) {
         if (s_edges) {
             memcpy(out + y * width, native + y * 256, 128 * sizeof(uint32_t));
@@ -226,26 +259,65 @@ static int collision_column_hook(uint16_t addr) {
 }
 
 /* ---- the developer start fixture ----
- * --dev-start W:L:A (world, level, area numbers, 0-based; W 9-12 = worlds
+ * --dev-start W:L:A[:PAGE] (world, level, area numbers, 0-based; W 9-12 = worlds
  * A-D) starts a game there: right after the title's StartGame (attract task
  * 5, HardWorldsCheckpoint, before it runs) it sets WorldNumber/LevelNumber/
  * AreaNumber and HardWorldFlag, and the game's own disk routines load that
  * world's files (SM2DATA4 for A-D there, SM2DATA2 for 5-8 in GameModeDisk-
- * Routines). World 9 lives in SM2DATA3, which only the ending loads: not a
- * start. A test fixture, not a player route. */
-static int s_dev_world = -1, s_dev_level, s_dev_area, s_dev_done;
+ * Routines). PAGE sets HalfwayPage, where InitializeArea starts the area.
+ *
+ * World 9 (W 8) lives in SM2DATA3, which only the ending loads, so W 8 goes
+ * the game's own way there: it starts 8-4 with every world marked finished
+ * (CompletedWorlds $FF) and, on its first gameplay frame, enters world 8's
+ * victory mode at StartVMDelay (task 3): the disk load of SM2DATA3, the final
+ * room and messages, then BackToNormal's GoToWorld9 and NextWorld start world
+ * 9. L/A/PAGE are not used for it. A test fixture, not a player route. */
+static int s_dev_world = -1, s_dev_level, s_dev_area, s_dev_page, s_dev_done;
 
 static void dev_start(void) {
+    if (s_dev_world == 8 && s_dev_done == 1 && smb2j_ws_game_engine()) {
+        POKE(RAM_CompletedWorlds, 0xFF);
+        POKE(RAM_OperMode, 2);
+        POKE(RAM_OperMode_Task, 3);
+        s_dev_done = 2;
+        printf("[Widescreen] dev start: world 8 victory mode, on to world 9\n");
+        fflush(stdout);
+        return;
+    }
     if (s_dev_world < 0 || s_dev_done || RAM(RAM_OperMode) != 0 || RAM(RAM_OperMode_Task) != 5) return;
     int hard = s_dev_world >= 9;
+    if (s_dev_world == 8) {
+        POKE(RAM_WorldNumber, SMB2J_WORLD8);
+        POKE(RAM_LevelNumber, 3);
+        POKE(RAM_AreaNumber, 3);
+        POKE(RAM_HardWorldFlag, 0);
+        POKE(RAM_HalfwayPage, 0);
+        POKE(RAM_CompletedWorlds, 0xFF);
+        s_dev_done = 1;
+        return;
+    }
     POKE(RAM_WorldNumber, (uint8_t)(hard ? s_dev_world - 9 : s_dev_world));
     POKE(RAM_LevelNumber, (uint8_t)s_dev_level);
     POKE(RAM_AreaNumber, (uint8_t)s_dev_area);
     POKE(RAM_HardWorldFlag, (uint8_t)hard);
+    /* InitializeArea starts the area at HalfwayPage (its clear stops below it). */
+    POKE(RAM_HalfwayPage, (uint8_t)s_dev_page);
     s_dev_done = 1;
-    printf("[Widescreen] dev start: world %d level %d area %d%s\n", hard ? s_dev_world - 9 : s_dev_world, s_dev_level,
-           s_dev_area, hard ? " (letter worlds)" : "");
+    printf("[Widescreen] dev start: world %d level %d area %d page %d%s\n", hard ? s_dev_world - 9 : s_dev_world,
+           s_dev_level, s_dev_area, s_dev_page, hard ? " (letter worlds)" : "");
     fflush(stdout);
+}
+
+/* --dev-hold ADDR:VALUE (repeatable) keeps a RAM byte at VALUE after every
+ * gameplay frame, e.g. InjuryTimer ($079E) so a probe's route survives
+ * enemies. A test fixture like --dev-start, never a player feature. */
+enum { DEV_HOLDS = 8 };
+static struct { uint16_t addr; uint8_t value; } s_dev_hold[DEV_HOLDS];
+static int s_dev_holds;
+
+static void dev_hold(void) {
+    if (!smb2j_ws_game_engine()) return;
+    for (int i = 0; i < s_dev_holds; i++) POKE(s_dev_hold[i].addr, s_dev_hold[i].value);
 }
 
 /* ---- the game's additions to the host ---- */
@@ -269,11 +341,20 @@ static void x_frame_begin(void *ctx) {
 static void x_frame_end(void *ctx) {
     (void)ctx;
     dev_start();
+    dev_hold();
     if (s_enabled && smb2j_ws_world_scene()) {
         smb_ws_world_update();
         smb_ws_actors_update();
     }
-    if (s_log) log_frame();
+    if (s_log) {
+        /* The log measures the composed picture of every frame (seams,
+         * leaves), not only of frames a window or --present-out shows. */
+        int w, h;
+        smb_ws_actors_compose_begin();
+        s_leaves_drawn = 0;
+        cyc_render_present(&w, &h);
+        log_frame();
+    }
 }
 
 static const CycHostOption OPTIONS[] = {
@@ -281,7 +362,8 @@ static const CycHostOption OPTIONS[] = {
     { "--widescreen-camera", true, "edges | centered" },
     { "--widescreen-hud", true, "edges | center" },
     { "--widescreen-enemies", true, "viewport | classic (native: renderer diagnostics only)" },
-    { "--dev-start", true, "W:L:A world, level and area numbers to start a game at (test fixture; W 9-12 = A-D)" },
+    { "--dev-start", true, "W:L:A[:PAGE] world, level, area numbers (and start page) to start a game at (test fixture; W 8 = 9 via the ending, 9-12 = A-D)" },
+    { "--dev-hold", true, "ADDR:VALUE keep a RAM byte at VALUE after each gameplay frame (test fixture; repeatable)" },
     { "--widescreen-log", true, "FILE: one JSON line per frame (the mod's state, seams, residents; probes)" },
 };
 
@@ -318,13 +400,24 @@ static bool x_option(void *ctx, const char *name, const char *value) {
         s_log = fopen(value, "w");
         return s_log != NULL;
     }
+    if (!strcmp(name, "--dev-hold")) {
+        char *end;
+        long addr = strtol(value, &end, 0), v;
+        if (*end != ':' || addr < 0 || addr > 0x7FF || s_dev_holds == DEV_HOLDS) return false;
+        v = strtol(end + 1, &end, 0);
+        if (*end || v < 0 || v > 255) return false;
+        s_dev_hold[s_dev_holds].addr = (uint16_t)addr;
+        s_dev_hold[s_dev_holds++].value = (uint8_t)v;
+        return true;
+    }
     if (!strcmp(name, "--dev-start")) {
-        int w, l, a;
-        if (sscanf(value, "%d:%d:%d", &w, &l, &a) != 3 || w < 0 || w > 12 || w == 8 || l < 0 || l > 3 || a < 0 || a > 7)
-            return false;
+        int w, l, a, p = 0;
+        int n = sscanf(value, "%d:%d:%d:%d", &w, &l, &a, &p);
+        if (n < 3 || w < 0 || w > 12 || l < 0 || l > 3 || a < 0 || a > 7 || p < 0 || p > 31) return false;
         s_dev_world = w;
         s_dev_level = l;
         s_dev_area = a;
+        s_dev_page = p;
         return true;
     }
     return false;
@@ -369,11 +462,11 @@ static int state_json(char *buf, int cap) {
     return snprintf(buf, (size_t)cap,
              "\"enabled\":%d,\"compositor\":%d,\"render_width\":%d,\"camera_x\":%d,\"area_data\":%u,\"file_list\":%u,"
              "\"hard_world\":%u,\"world\":%u,\"view_left\":%d,\"native_x0\":%d,\"room_edges\":%d,\"hud_edges\":%d,"
-             "\"enemies\":%d,\"area_end\":%u,\"fixed_rooms\":%u,\"valid\":%u,\"decoded_columns\":%u,"
+             "\"enemy_mode\":%d,\"area_end\":%u,\"fixed_rooms\":%u,\"valid\":%u,\"decoded_columns\":%u,"
              "\"verified_columns\":%u,\"mismatched_columns\":%u,\"first_mismatch_column\":%d,\"first_mismatch_row\":%d,"
              "\"expected\":%u,\"actual\":%u,\"decode_cycles\":%u,\"plants\":%u,\"flag_x\":%d,\"world_scene\":%d,"
              "\"game_engine\":%d,\"wide_frames\":%llu,\"native_frames\":%llu,\"oper_mode\":%u,\"oper_task\":%u,"
-             "\"world_number\":%u,\"level\":%u,\"area\":%u,\"area_type\":%u",
+             "\"world_number\":%u,\"level\":%u,\"area\":%u,\"area_type\":%u,\"wind\":%u,\"leaf_copies\":%d",
              s_enabled, cyc_render_has_compositor(), cyc_video_width(), camera_x(), w->area_data, w->file_list,
              w->hard_world, w->world, smb2j_ws_view_left(camera_x(), cyc_video_width()), s_render_native_x0,
              s_room_edges, s_edges, s_enemies, w->area_end, w->fixed_rooms, w->valid, w->decoded_columns,
@@ -381,7 +474,7 @@ static int state_json(char *buf, int cap) {
              w->first_expected, w->first_actual, w->decode_cycles, w->plant_count, w->flag_x, smb2j_ws_world_scene(),
              smb2j_ws_game_engine(), (unsigned long long)s_wide_frames, (unsigned long long)s_native_frames,
              RAM(RAM_OperMode), RAM(RAM_OperMode_Task), RAM(RAM_WorldNumber), RAM(RAM_LevelNumber),
-             RAM(RAM_AreaNumber), RAM(RAM_AreaType));
+             RAM(RAM_AreaNumber), RAM(RAM_AreaType), RAM(RAM_WindFlag), s_leaves_drawn);
 }
 
 /* --widescreen-log FILE: one JSON line per frame from power-on - the mod's

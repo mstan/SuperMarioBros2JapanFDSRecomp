@@ -15,7 +15,7 @@ rom_crc32 = "f04cd4cd"
 [[feature]]
 id = "widescreen"
 name = "Widescreen (Experimental)"
-description = "Render extended terrain, ordinary enemies, piranha plants and independent moving platforms. Choose original activation timing or movement throughout the visible area. Experimental; bosses, linked balance platforms, frenzy spawners and wind leaves still use native loading."
+description = "Render extended terrain, ordinary enemies, piranha plants (both kinds), independent moving platforms and wind leaves. Choose original activation timing or movement throughout the visible area. Experimental; bosses, linked balance platforms and frenzy spawners still use native loading."
 group = "Display"
 exclusive_group = "display-mode"
 default_enabled = false

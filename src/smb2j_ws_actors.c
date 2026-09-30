@@ -60,6 +60,10 @@ typedef struct {
 #define ACTORS_VERSION 5u
 static Actors s;
 static int s_enabled, s_virtual, s_render_wide;
+/* Pixels the last composed picture got from the residents and the goal flag. */
+static int s_drawn_actor_pixels, s_drawn_flag_pixels;
+
+void smb_ws_actors_compose_begin(void) { s_drawn_actor_pixels = s_drawn_flag_pixels = 0; }
 static SmbEnemyMode s_mode = SMB_ENEMIES_VIEWPORT;
 
 static int camera(void) { return RAM(RAM_ScreenLeft_PageLoc) << 8 | RAM(RAM_ScreenLeft_X_Pos); }
@@ -542,8 +546,13 @@ void smb_ws_actors_update(void) {
             flag.state[F_YH] = 1;
             flag.state[F_Y] = 0x30;
             /* Before native loading, preview only the authored flag. Once
-             * loaded, the flag hook supplies its real animation and score. */
-            if (RAM(RAM_Enemy_ID + 5) != 0x30 || live_x(5) != x) flag_graphics(&s.flag_next, &flag, 0, 64);
+             * loaded, the flag hook supplies its real animation and score;
+             * a frame in which the game did not run the flag's handler (the
+             * frame it loads, a paused frame) keeps the picture it had. */
+            if (RAM(RAM_Enemy_ID + 5) != 0x30 || live_x(5) != x)
+                flag_graphics(&s.flag_next, &flag, 0, 64);
+            else
+                s.flag_next = s.flag_display;
         }
     }
 }
@@ -590,6 +599,8 @@ void smb_ws_actors_draw(uint32_t *out, int width, int height, int native_x0, int
                     int color = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
                     if (!color || ((v->attr & 32) && opaque[dy * width + dx])) continue;
                     out[dy * width + dx] = cyc_render_color(16 + (v->attr & 3) * 4 + color);
+                    if (n == s.count) s_drawn_flag_pixels++;
+                    else s_drawn_actor_pixels++;
                 }
             }
         }
@@ -620,13 +631,14 @@ int smb_ws_actors_json(char *buf, int cap) {
     }
     int len = snprintf(buf, (size_t)cap,
                        "\"enemy_policy\":%d,\"authored\":%d,\"loaded\":%d,\"active\":%d,\"native\":%d,"
-                       "\"sprites\":%d,\"updates\":%llu,\"transfers\":%llu,\"loads\":%llu,\"flag\":{\"world_x\":%d,"
-                       "\"sprites\":%d,\"native\":%d,\"x\":%d,\"y\":%d},\"enemies\":[",
+                       "\"sprites\":%d,\"updates\":%llu,\"transfers\":%llu,\"loads\":%llu,\"drawn_pixels\":%d,"
+                       "\"flag\":{\"world_x\":%d,\"sprites\":%d,\"native\":%d,\"x\":%d,\"y\":%d,\"drawn_pixels\":%d},"
+                       "\"enemies\":[",
                        s_mode, s.count, loaded, active, native, sprites, (unsigned long long)s.updates,
-                       (unsigned long long)s.transfers, (unsigned long long)s.loads, smb_ws_world_flag_x(),
-                       s.flag_display.count, s.flag_display.native,
+                       (unsigned long long)s.transfers, (unsigned long long)s.loads, s_drawn_actor_pixels,
+                       smb_ws_world_flag_x(), s.flag_display.count, s.flag_display.native,
                        s.flag_display.count ? s.flag_display.sprite[0].x : -1,
-                       s.flag_display.count ? s.flag_display.sprite[0].y : -1);
+                       s.flag_display.count ? s.flag_display.sprite[0].y : -1, s_drawn_flag_pixels);
     int comma = 0;
     for (int i = 0; i < s.count && len < cap - 200; i++) if (s.actor[i].loaded) {
         const Actor *a = &s.actor[i];
