@@ -18,3 +18,71 @@ fds            = true
 [fds]
 image = "Super Mario Bros. 2 (Japan) (Debug Value 0).fds"
 bios  = "bios/disksys.rom"
+
+# ---- the widescreen mod's hook sites (runner/cyc/cyc_hooks.h) ----
+# Trusted plugins (src/smb2j_ws*.c) observe these routines of SM2MAIN, or
+# take one over, while the widescreen mod is enabled; disabled, a site costs a
+# flag test. Each site is keyed on the code at its address - the CRC-32 of
+# its first `length` bytes (tools/hook_keys.py computes and checks them) - so
+# a hook never fires on another file loaded at the same address, and no game
+# bytes are in this repository. Addresses: docs/SMB2J_SYMBOL_MAP.md.
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.column"          # RenderAreaGraphics: bind streamed columns
+addr = 0x678B
+length = 8
+crc32 = 0xD486F9D7
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.area"            # InitializeArea: a new (or restarted) area
+addr = 0x6E39
+length = 8
+crc32 = 0x24933765
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.collision-column" # AreaParserCore: block-buffer column ownership
+addr = 0x720D
+length = 8
+crc32 = 0x85FD5ABA
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.enemy-init"      # CheckpointEnemyID: resident handoff/deduplication
+addr = 0x8E50
+length = 8
+crc32 = 0xA9A255FB
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.plant-init"      # InitPiranhaPlant: plants (ids $0D, $04) as residents
+addr = 0x9398
+length = 8
+crc32 = 0xD98F992E
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.enemy-cull"      # OffscreenBoundsCheck: residents retire through the host
+addr = 0xA2B4
+length = 8
+crc32 = 0xB117E5CF
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.flag-gfx"        # FlagpoleGfxHandler: complete wide flag and score sprites
+addr = 0xB1F1
+length = 8
+crc32 = 0x7D759D8D
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.large-platform-gfx" # DrawLargePlatform
+addr = 0xB26E
+length = 8
+crc32 = 0x84F578C9
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.enemy-gfx"       # EnemyGfxHandler: full sprites before native culling
+addr = 0xB52C
+length = 8
+crc32 = 0x3BFCD6CC
+
+[[mod_function_hook]]
+id = "smb2j.widescreen.small-platform-gfx" # DrawSmallPlatform
+addr = 0xBA41
+length = 8
+crc32 = 0xF400684E
