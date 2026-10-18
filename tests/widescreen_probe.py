@@ -92,7 +92,9 @@ class Probe:
         with open(d / 'out.txt', 'w') as f:
             f.write(' '.join(cmd) + '\n')
             f.flush()
-            rc = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT).returncode
+            rc = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                                env=dict(os.environ, SDL_AUDIODRIVER='dummy', LNG_TEST_HIDDEN='1')).returncode
         if rc:
             raise RuntimeError(f'{tag}: exit {rc} (see {d / "out.txt"})')
         return d

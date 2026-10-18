@@ -73,12 +73,33 @@ cmake --build build --config Release
 powershell -File tools/make_release.ps1   # optional: release zip in release/
 ```
 
+The default build derives additional guarded disk-code views from your image
+using `tools/coverage_sites.json`. This metadata contains executed addresses,
+disk-profile associations and conservative rewrite hints, without game bytes.
+It also accounts for World 9 retaining part of the World 8 disk overlay. Every
+compiled view retains its byte guards and interpreter fallback.
+
 `-DNESRECOMP_HEADLESS=ON` builds without a window, for scripted runs. `routes/`
 holds scripted play routes (`python routes/run_routes.py <exe>`). The same routes
 can also produce a local RAM capture file (`--capture-log cyc_captures.txt`, then
 configure with `-DNESRECOMP_CYCLE_CAPTURES=cyc_captures.txt`), which compiles the
 code the game copies into RAM as well. That file contains game code, so it is
 gitignored and must never be committed.
+
+### Progression coverage validation
+
+The October 2026 pass used the original area/disk loaders with explicit start
+and protection assists at all 54 regular area entries in worlds 1–8 and A–D,
+plus all four World 9 areas after the original ending disk load. Per-frame
+machine hashes and screenshots matched independent interpreter runs. These
+entry and movement checks do not establish an unassisted full playthrough.
+
+With engine `2b4fcdb98c9e702be3fb365cfc645003c50b5fc1`, a fresh build without
+private captures reduced interpreted cycles across the 54 regular routes from
+6,563,350 to 188 (64 instructions). The four World 9 routes fell from 134,312
+to zero interpreted cycles. The widescreen seam, enemy, plant, platform, wind,
+flag, World 9, save-state, preset and saved-mod checks also passed against that
+build. These measurements apply to the recorded routes and approved image.
 
 ## License
 
