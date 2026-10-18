@@ -8,11 +8,10 @@ The zip never contains a disk image, the BIOS, a capture file or saves. Building
 needs your own disk image and bios\disksys.rom (see README.md): the BIOS is
 recompiled into the program. The player supplies both files again at run time.
 
-Static coverage: code the game copies into RAM at run time is compiled from a
-local capture file (cyc_captures.txt, gitignored: it holds game code bytes).
--Ingest regenerates it from your own image first: a headless build runs every
-route in routes\routes.toml with --capture-log, then the release build compiles
-what they ran. Without a capture file that code runs on the interpreter.
+Default native RAM views are derived from the supplied disk image and the
+checked-in observed-PC/profile metadata; no private capture file is required.
+Explicit -Captures or -Ingest can supplement those views. Captures contain game
+bytes and stay private. -Ingest runs the original routes before compiling them.
 
 Publish after smoke-testing the zip from a scratch directory:
   gh release create vX.Y.Z release\SuperMarioBros2JapanFDSRecomp-windows-x64.zip --title "vX.Y.Z" --notes-file <notes.md>
@@ -24,13 +23,15 @@ param(
   [switch]$SkipBuild,
   [string]$CMake = '',
   [string]$Captures = '',
-  [switch]$Ingest
+  [switch]$Ingest,
+  [string]$ArchiveName = 'SuperMarioBros2JapanFDSRecomp-windows-x64.zip'
 )
 $ErrorActionPreference = 'Stop'
 $name = 'SuperMarioBros2JapanFDSRecomp'
 $root = Split-Path -Parent $PSScriptRoot
-$build = Join-Path $root $BuildDir
+$build = if ([IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Path $root $BuildDir }
 $out = Join-Path $root 'release'
+if ([IO.Path]::GetFileName($ArchiveName) -ne $ArchiveName) { throw 'ArchiveName must be a filename.' }
 # Visual Studio's CMake: another cmake on PATH (e.g. MSYS2's) has no VS generator.
 if (-not $CMake) {
   $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -42,8 +43,8 @@ if (-not $CMake) {
   if (-not $CMake) { $CMake = 'cmake' }
 }
 
-if (-not $Captures) { $Captures = Join-Path $root 'cyc_captures.txt' }
-$Captures = [IO.Path]::GetFullPath($Captures)
+if ($Ingest -and -not $Captures) { $Captures = Join-Path $root 'cyc_captures.txt' }
+if ($Captures) { $Captures = [IO.Path]::GetFullPath($Captures) }
 if ($Ingest) {
   # Capture pass: a headless build (with whatever captures exist) runs every route.
   $ingestBuild = Join-Path $root 'build_ingest'
@@ -57,8 +58,9 @@ if ($Ingest) {
   if ($LASTEXITCODE -ne 0) { throw "routes failed ($LASTEXITCODE)" }
 }
 $capArg = '-DNESRECOMP_CYCLE_CAPTURES='
-if (Test-Path $Captures) { $capArg = "-DNESRECOMP_CYCLE_CAPTURES=$Captures"; Write-Host "static coverage: compiling captures from $Captures" }
-else { Write-Warning "no capture file ($Captures): RAM code the game copies at run time will be interpreted; use -Ingest" }
+if ($Captures -and (Test-Path -LiteralPath $Captures)) { $capArg = "-DNESRECOMP_CYCLE_CAPTURES=$Captures"; Write-Host "Additional private views: $Captures" }
+elseif ($Captures) { throw "Explicit capture file does not exist: $Captures" }
+else { Write-Host 'Native views: deriving the qualified default recipe from the supplied disk image.' }
 
 if (-not $SkipBuild) {
   & $CMake -S $root -B $build -G 'Visual Studio 17 2022' -A x64 -DNESRECOMP_DEV_UI=OFF -DNESRECOMP_HEADLESS=OFF $capArg
@@ -70,6 +72,9 @@ $cache = Join-Path $build 'CMakeCache.txt'
 if (-not (Select-String -LiteralPath $cache -Pattern '^NESRECOMP_DEV_UI:BOOL=OFF$' -Quiet)) {
   throw 'refusing to package a build with NESRECOMP_DEV_UI on'
 }
+if (-not (Select-String -LiteralPath $cache -Pattern '^NESRECOMP_ENABLE_TRACE:BOOL=OFF$' -Quiet)) {
+  throw 'refusing to package a diagnostic build'
+}
 $exe = Get-ChildItem -LiteralPath $build -Recurse -Filter "$name.exe" | Where-Object { $_.FullName -notmatch '\\CMakeFiles\\' } |
        Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $exe) { throw "no $name.exe under $build" }
@@ -78,8 +83,8 @@ foreach ($need in @('SDL2.dll', 'assets', 'mods\packages')) {
   if (-not (Test-Path (Join-Path $bin $need))) { throw "missing $need beside $($exe.FullName)" }
 }
 
-$stage = Join-Path $out $name
-if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+New-Item -ItemType Directory -Force -Path $out | Out-Null
+$stage = Join-Path $out ('stage-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $exe.FullName, (Join-Path $bin 'SDL2.dll') $stage
 Copy-Item -Recurse (Join-Path $bin 'assets') $stage
@@ -121,7 +126,13 @@ $banned = Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object {
 }
 if ($banned) { throw "refusing to package: $($banned.FullName -join ', ')" }
 
-$zip = Join-Path $out "$name-windows-x64.zip"
+$zip = Join-Path $out $ArchiveName
 if (Test-Path $zip) { Remove-Item -Force $zip }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
 Write-Host "wrote $zip"
+$stageAbsolute = [IO.Path]::GetFullPath($stage)
+$outPrefix = [IO.Path]::GetFullPath($out).TrimEnd('\') + '\'
+if (-not $stageAbsolute.StartsWith($outPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+  throw "Refusing cleanup outside release directory: $stageAbsolute"
+}
+Remove-Item -LiteralPath $stageAbsolute -Recurse -Force
