@@ -87,6 +87,9 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 $stage = Join-Path $out ('stage-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $exe.FullName, (Join-Path $bin 'SDL2.dll') $stage
+foreach ($dll in 'msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll') {
+  Copy-Item -LiteralPath (Join-Path $bin $dll) -Destination $stage
+}
 Copy-Item -Recurse (Join-Path $bin 'assets') $stage
 # Mod packages only; mods\state.toml is the player's selection, never shipped.
 New-Item -ItemType Directory -Force (Join-Path $stage 'mods') | Out-Null
